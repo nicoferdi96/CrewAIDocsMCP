@@ -1,5 +1,5 @@
 {
-  "id": "croonnicola/crewai-docs-mcp",
+  "id": "nicoferdi96/crewai-docs-mcp",
   "name": "CrewAI Documentation MCP",
   "description": "An intelligent MCP server for accessing CrewAI documentation with search capabilities, code examples, and API reference. Optimized for CrewAI development workflows.",
   "tags": [
@@ -61,7 +61,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/croonnicola/CrewAIDocsMCP"
+    "url": "https://github.com/nicoferdi96/CrewAIDocsMCP"
   },
   "transportWebSocketConfig": {
     "port": 8000,
