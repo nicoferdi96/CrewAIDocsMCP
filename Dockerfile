@@ -40,6 +40,13 @@ USER mcp
 ENV PYTHONUNBUFFERED=1
 ENV CACHE_TTL=3600
 ENV MAX_CACHE_SIZE=104857600
+ENV MCP_TRANSPORT=http
+ENV MCP_HOST=0.0.0.0
+ENV MCP_PORT=8000
+ENV MCP_PATH=/mcp
 
-# Run the MCP server
-CMD ["python", "main.py"]
+# Expose port for HTTP transport
+EXPOSE 8000
+
+# Run the MCP server in HTTP mode
+CMD ["python", "main.py", "--transport", "http", "--host", "0.0.0.0", "--port", "8000", "--path", "/mcp"]

@@ -1,5 +1,7 @@
 startCommand:
-  type: stdio
+  type: streamable-http
+  port: 8000
+  path: /mcp
   configSchema:
     type: object
     properties:
@@ -18,9 +20,13 @@ startCommand:
   commandFunction: |
     (config) => ({
       command: 'python',
-      args: ['main.py'],
+      args: ['main.py', '--transport', 'http', '--host', '0.0.0.0', '--port', '8000', '--path', '/mcp'],
       env: {
         PYTHONUNBUFFERED: '1',
+        MCP_TRANSPORT: 'http',
+        MCP_HOST: '0.0.0.0',
+        MCP_PORT: '8000',
+        MCP_PATH: '/mcp',
         CACHE_TTL: String(config.CACHE_TTL || 3600),
         MAX_CACHE_SIZE: String(config.MAX_CACHE_SIZE || 104857600),
         DOCS_UPDATE_INTERVAL: String(config.DOCS_UPDATE_INTERVAL || 86400)
