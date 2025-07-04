@@ -1,25 +1,20 @@
+runtime: "container"
+build:
+  dockerfile: "Dockerfile"
+  dockerBuildPath: "."
 startCommand:
-  type: streamable-http
-  port: 8000
-  path: /mcp
+  type: "http"
   configSchema:
-    type: object
+    type: "object"
     properties:
       CACHE_TTL:
-        type: integer
+        type: "integer"
         default: 3600
         description: "Cache time-to-live in seconds"
       MAX_CACHE_SIZE:
-        type: integer
+        type: "integer"
         default: 104857600
-        description: "Maximum cache size in bytes"
-  commandFunction: |
-    (config) => ({
-      command: 'python',
-      args: ['main.py'],
-      env: {
-        PYTHONUNBUFFERED: '1',
-        CACHE_TTL: String(config.CACHE_TTL || 3600),
-        MAX_CACHE_SIZE: String(config.MAX_CACHE_SIZE || 104857600)
-      }
-    })
+        description: "Maximum cache size in bytes (default: 100MB)"
+  exampleConfig:
+    CACHE_TTL: 3600
+    MAX_CACHE_SIZE: 104857600

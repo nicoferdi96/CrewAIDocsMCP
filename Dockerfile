@@ -16,11 +16,9 @@ RUN mkdir -p /app/docs_cache/crewai /app/docs_cache/search_index
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
-ENV CACHE_TTL=3600
-ENV MAX_CACHE_SIZE=104857600
 
-# Expose port 8000 for HTTP transport
+# Expose port for HTTP transport (Smithery will set PORT env var)
 EXPOSE 8000
 
-# Run the simplified MCP server
+# Run the MCP server
 CMD ["python", "main.py"]

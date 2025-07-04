@@ -187,9 +187,13 @@ async def list_sections() -> List[Dict]:
 
 
 if __name__ == "__main__":
-    print("Starting CrewAI Docs MCP server (HTTP transport)...")
+    # Get port from environment variable (Smithery sets this)
+    port = int(os.getenv("PORT", "8000"))
+    
+    print(f"Starting CrewAI Docs MCP server on port {port}...")
     print(f"Cache TTL: {os.getenv('CACHE_TTL', '3600')} seconds")
     print(f"Max cache size: {int(os.getenv('MAX_CACHE_SIZE', '104857600')) / 1024 / 1024:.2f} MB")
     
     # Run with streamable HTTP transport
+    # Note: FastMCP should automatically use the PORT env variable
     mcp.run(transport="streamable-http")
