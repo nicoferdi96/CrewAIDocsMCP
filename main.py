@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
 """
-CrewAI Documentation MCP Server
+CrewAI Documentation MCP Server - HTTP Only
 
 Provides intelligent access to CrewAI documentation through MCP tools.
-Supports both stdio (for local development) and HTTP (for production/Smithery deployment) transports.
+Optimized for Smithery deployment with streamable HTTP transport.
 """
 
 import os
-import sys
-import argparse
-import asyncio
 from typing import List, Dict, Optional
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
@@ -22,42 +19,8 @@ from services.search_service import SearchService
 # Load environment variables
 load_dotenv()
 
-# Parse command line arguments
-def parse_args():
-    parser = argparse.ArgumentParser(description="CrewAI Documentation MCP Server")
-    parser.add_argument(
-        "--transport", 
-        choices=["stdio", "http"], 
-        default=os.getenv("MCP_TRANSPORT", "http"),
-        help="Transport type: stdio for local development, http for production (default: http)"
-    )
-    parser.add_argument(
-        "--host", 
-        default=os.getenv("MCP_HOST", "0.0.0.0"),
-        help="Host for HTTP transport (default: 0.0.0.0)"
-    )
-    parser.add_argument(
-        "--port", 
-        type=int, 
-        default=int(os.getenv("PORT", os.getenv("MCP_PORT", "8000"))),
-        help="Port for HTTP transport (default: 8000)"
-    )
-    parser.add_argument(
-        "--path", 
-        default=os.getenv("MCP_PATH", "/mcp"),
-        help="Path for HTTP transport (default: /mcp)"
-    )
-    return parser.parse_args()
-
-# Initialize MCP server (will be configured based on transport)
-def create_mcp_server():
-    return FastMCP(
-        "crewai-docs",
-        keep_alive_timeout=300,
-        heartbeat_interval=30
-    )
-
-mcp = create_mcp_server()
+# Initialize MCP server for HTTP transport only
+mcp = FastMCP("crewai-docs")
 
 # Initialize services
 cache_service = CacheService(
@@ -223,36 +186,10 @@ async def list_sections() -> List[Dict]:
         raise ToolError(f"Failed to list sections: {str(e)}")
 
 
-async def cleanup_services():
-    """Cleanup services on shutdown."""
-    await doc_service.close()
-
-
 if __name__ == "__main__":
-    args = parse_args()
-    
-    print(f"Starting CrewAI Docs MCP server via {args.transport} transport...")
+    print("Starting CrewAI Docs MCP server (HTTP transport)...")
     print(f"Cache TTL: {os.getenv('CACHE_TTL', '3600')} seconds")
     print(f"Max cache size: {int(os.getenv('MAX_CACHE_SIZE', '104857600')) / 1024 / 1024:.2f} MB")
     
-    try:
-        if args.transport == "stdio":
-            print("Running in stdio mode (local development)")
-            asyncio.run(mcp.run_stdio_async())
-        else:  # http
-            print(f"Running HTTP server on {args.host}:{args.port}{args.path}")
-            print(f"Server will be accessible at: http://{args.host}:{args.port}{args.path}")
-            print("Note: FastMCP will use its default HTTP server configuration")
-            # Use FastMCP's streamable-http transport
-            mcp.run(transport="streamable-http")
-    except KeyboardInterrupt:
-        print("\nShutting down gracefully...")
-    except Exception as e:
-        print(f"Error starting server: {e}")
-        sys.exit(1)
-    finally:
-        # Cleanup
-        try:
-            asyncio.run(cleanup_services())
-        except:
-            pass
+    # Run with streamable HTTP transport
+    mcp.run(transport="streamable-http")

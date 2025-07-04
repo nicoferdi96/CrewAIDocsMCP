@@ -8,27 +8,18 @@ startCommand:
       CACHE_TTL:
         type: integer
         default: 3600
-        description: "Cache time-to-live in seconds (default: 1 hour)"
+        description: "Cache time-to-live in seconds"
       MAX_CACHE_SIZE:
         type: integer
         default: 104857600
-        description: "Maximum cache size in bytes (default: 100MB)"
-      DOCS_UPDATE_INTERVAL:
-        type: integer
-        default: 86400
-        description: "Documentation update interval in seconds (default: 24 hours)"
+        description: "Maximum cache size in bytes"
   commandFunction: |
     (config) => ({
       command: 'python',
-      args: ['main.py', '--transport', 'http', '--host', '0.0.0.0', '--path', '/mcp'],
+      args: ['main.py'],
       env: {
         PYTHONUNBUFFERED: '1',
-        MCP_TRANSPORT: 'http',
-        MCP_HOST: '0.0.0.0',
-        MCP_PATH: '/mcp',
-        PORT: '8000',
         CACHE_TTL: String(config.CACHE_TTL || 3600),
-        MAX_CACHE_SIZE: String(config.MAX_CACHE_SIZE || 104857600),
-        DOCS_UPDATE_INTERVAL: String(config.DOCS_UPDATE_INTERVAL || 86400)
+        MAX_CACHE_SIZE: String(config.MAX_CACHE_SIZE || 104857600)
       }
     })
