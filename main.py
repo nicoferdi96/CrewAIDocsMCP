@@ -39,7 +39,7 @@ def parse_args():
     parser.add_argument(
         "--port", 
         type=int, 
-        default=int(os.getenv("MCP_PORT", "8000")),
+        default=int(os.getenv("PORT", os.getenv("MCP_PORT", "8000"))),
         help="Port for HTTP transport (default: 8000)"
     )
     parser.add_argument(
