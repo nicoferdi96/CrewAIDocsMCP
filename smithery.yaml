@@ -1,20 +1,4 @@
-runtime: "container"
-build:
-  dockerfile: "Dockerfile"
-  dockerBuildPath: "."
-startCommand:
-  type: "http"
-  configSchema:
-    type: "object"
-    properties:
-      CACHE_TTL:
-        type: "integer"
-        default: 3600
-        description: "Cache time-to-live in seconds"
-      MAX_CACHE_SIZE:
-        type: "integer"
-        default: 104857600
-        description: "Maximum cache size in bytes (default: 100MB)"
-  exampleConfig:
-    CACHE_TTL: 3600
-    MAX_CACHE_SIZE: 104857600
+version: 1
+start:
+  command: ["uv", "run", "main.py"]
+  port: 8080

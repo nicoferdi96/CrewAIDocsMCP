@@ -14,7 +14,8 @@ ENV PYTHONUNBUFFERED=1
 # Install dependencies
 RUN uv sync
 
-EXPOSE $PORT
+# Expose the port that will be set by Smithery
+EXPOSE 8080
 
 # Run the FastMCP server
 CMD ["uv", "run", "main.py"]

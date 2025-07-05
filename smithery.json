@@ -64,7 +64,7 @@
     "url": "https://github.com/nicoferdi96/CrewAIDocsMCP"
   },
   "transportWebSocketConfig": {
-    "port": 8000,
-    "path": "/ws"
+    "port": 8080,
+    "path": "/mcp"
   }
 }
