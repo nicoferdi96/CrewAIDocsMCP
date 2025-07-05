@@ -21,17 +21,26 @@ This repository provides a complete, production-ready example of building and de
 .
 ├── docs/                       # Documentation assets and diagrams
 │   └── mcp-client-server.png   # MCP architecture diagram
-├── fastapi_example/            # Multi-server FastAPI example
+├── fast_api/                   # Multi-server FastAPI setup
+│   ├── crewai_docs_server.py   # CrewAI documentation MCP server
 │   ├── echo_server.py          # Simple echo tool MCP server
 │   ├── math_server.py          # Math operations MCP server
-│   └── server.py               # FastAPI app mounting multiple servers
+│   ├── server.py               # FastAPI app mounting all servers
+│   └── tavily_server.py        # Tavily web search MCP server
+├── services/                   # Shared services and clients
+│   ├── __init__.py
+│   ├── github_client.py        # GitHub API client for docs
+│   └── search_engine.py        # Documentation search engine
+├── utils/                      # Utility functions
+│   ├── __init__.py
+│   └── doc_parser.py           # MDX parsing utilities
 ├── .gitignore
 ├── .python-version             # Python 3.11.0
 ├── CLAUDE.md                   # Codebase documentation for AI assistants
 ├── pyproject.toml              # Project dependencies and metadata
 ├── README.md                   # This file
 ├── runtime.txt                 # Python runtime specification for deployment
-├── server.py                   # Main MCP server with Tavily web search
+├── server.py                   # Standalone Tavily search server
 └── uv.lock                     # Dependency lockfile for uv
 ```
 
@@ -44,6 +53,7 @@ This repository provides a complete, production-ready example of building and de
 - Python 3.11+ (3.12+ recommended)
 - [uv](https://github.com/astral-sh/uv) package manager (recommended)
 - Tavily API key for web search functionality (get one at [tavily.com](https://tavily.com))
+- OpenAI API key for semantic search (get one at [platform.openai.com](https://platform.openai.com))
 
 ### Installation
 
@@ -61,7 +71,8 @@ uv sync
 
 3. **Set up environment variables**:
 ```bash
-echo "TAVILY_API_KEY=your_api_key_here" > .env
+echo "TAVILY_API_KEY=your_tavily_api_key_here" > .env
+echo "OPENAI_API_KEY=your_openai_api_key_here" >> .env
 ```
 
 ---
@@ -95,14 +106,21 @@ mcp.run(transport="streamable-http")
 uv run server.py
 ```
 
+**CrewAI Documentation server:**
+```bash
+PYTHONPATH=. uv run python fast_api/crewai_docs_server.py
+```
+
 **Multiple MCP servers via FastAPI:**
 ```bash
-uv run fastapi_example/server.py
+PYTHONPATH=. uv run python fast_api/server.py
 ```
 
 This mounts:
 - Echo server at `http://localhost:8000/echo/mcp/`
 - Math server at `http://localhost:8000/math/mcp/`
+- Tavily search at `http://localhost:8000/tavily/mcp/`
+- CrewAI docs at `http://localhost:8000/crewai/mcp/`
 
 ---
 
@@ -135,8 +153,11 @@ npx @modelcontextprotocol/inspector http://localhost:8000/echo/mcp/
 # Test the math server
 npx @modelcontextprotocol/inspector http://localhost:8000/math/mcp/
 
-# Example with custom path (e.g., tavily_search)
-npx @modelcontextprotocol/inspector http://localhost:8000/tavily_search/mcp/
+# Test the CrewAI documentation server
+npx @modelcontextprotocol/inspector http://localhost:8000/crewai/mcp/
+
+# Test the Tavily search server
+npx @modelcontextprotocol/inspector http://localhost:8000/tavily/mcp/
 ```
 
 ### Alternative: Using uv's built-in MCP dev tools
@@ -165,12 +186,13 @@ This project is configured for easy deployment to [Render](https://render.com).
 
 3. **Configure the service**:
    - **Build Command**: `uv sync`
-   - **Start Command**: `uv run fastapi_example/server.py`
+   - **Start Command**: `PYTHONPATH=. uv run python fast_api/server.py`
    - **Environment**: Python 3
    - **Instance Type**: Free or paid tier based on your needs
 
 4. **Add environment variables**:
    - `TAVILY_API_KEY`: Your Tavily API key
+   - `OPENAI_API_KEY`: Your OpenAI API key for embeddings
    - `PORT`: Set by Render automatically
    - Any other required secrets
 
@@ -202,17 +224,17 @@ RUN uv sync
 EXPOSE 8000
 
 # Run the server
-CMD ["uv", "run", "fastapi_example/server.py"]
+CMD ["sh", "-c", "PYTHONPATH=. uv run python fast_api/server.py"]
 ```
 
 #### Heroku
 Create a `Procfile`:
 ```
-web: uv run fastapi_example/server.py
+web: PYTHONPATH=. uv run python fast_api/server.py
 ```
 
 #### Railway/Fly.io
-Use similar configuration with `uv sync` for build and `uv run fastapi_example/server.py` for start command.
+Use similar configuration with `uv sync` for build and `PYTHONPATH=. uv run python fast_api/server.py` for start command.
 
 ---
 
@@ -263,6 +285,49 @@ Use similar configuration with `uv sync` for build and `uv run fastapi_example/s
 
 ---
 
+## 📚 Available MCP Servers
+
+### 1. Tavily Web Search Server
+- **Tool**: `web_search` - Search the web using Tavily API
+- **Port**: 10000 (standalone)
+- **Requires**: `TAVILY_API_KEY` environment variable
+
+### 2. CrewAI Documentation Server (AI-Powered Vector Search)
+- **Tools**:
+  - `search_crewai_docs` - AI-powered semantic search using OpenAI embeddings
+  - `get_search_suggestions` - Example queries for semantic search
+  - `get_search_status` - Check indexing status and progress
+  - `list_available_concepts` - Dynamically discovered concept list
+  - `get_concept_docs` - Get documentation for specific concepts (auto-discovered)
+  - `get_code_examples` - Extract code examples with semantic relevance
+  - `get_doc_file` - Retrieve full documentation files
+  - `refresh_search_index` - Force refresh of search index
+- **Port**: 10001 (standalone)
+- **Features**:
+  - **AI-powered search**: Semantic search using OpenAI's text-embedding-3-small model
+  - **Natural language queries**: Ask questions like "How do I create an agent?"
+  - **No timeouts**: Background embedding generation with status tracking
+  - **Auto-discovery**: Dynamic concept mapping using pathlib
+  - **Persistent embeddings**: Fast server restarts with cached vectors
+  - **Smart chunking**: Documents split into ~500 token chunks for granular search
+  - **Once-per-day indexing**: Automatic refresh every 24 hours
+  - **Category filtering**: Search within specific documentation categories
+
+### 3. Echo Server (Example)
+- **Tools**:
+  - `echo` - Echo back messages
+  - `reverse_echo` - Echo messages in reverse
+- **Port**: 9001 (standalone)
+
+### 4. Math Server (Example)
+- **Tools**:
+  - `add` - Add two numbers
+  - `multiply` - Multiply two numbers
+  - `calculate` - Evaluate mathematical expressions
+- **Port**: 9002 (standalone)
+
+---
+
 ## 🛠️ Development
 
 ### Local Development Setup
@@ -279,7 +344,7 @@ uv sync
 uv run server.py
 
 # Or run multi-server FastAPI app
-uv run fastapi_example/server.py
+PYTHONPATH=. uv run python fast_api/server.py
 ```
 
 ### Creating New Tools
@@ -307,7 +372,7 @@ npx @modelcontextprotocol/inspector http://localhost:10000/mcp/
 
 3. **Add to FastAPI app** (optional):
 ```python
-# In fastapi_example/server.py
+# In fast_api/server.py
 from my_tools_server import mcp as my_tools_mcp
 
 # Mount the server
@@ -335,6 +400,7 @@ uv lock
 Create a `.env` file in the project root:
 ```env
 TAVILY_API_KEY=your_tavily_api_key
+OPENAI_API_KEY=your_openai_api_key
 PORT=10000
 HOST=0.0.0.0
 ```
