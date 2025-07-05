@@ -71,6 +71,9 @@ class SearchService:
     async def search(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
         """
         Search documentation.
+        
+        Note: This method is deprecated. Use DocumentationService.search_documentation() instead
+        which fetches real documentation from GitHub.
 
         Args:
             query: Search query
@@ -79,34 +82,10 @@ class SearchService:
         Returns:
             List of search results
         """
-        results = []
+        # This method should not be used anymore - real search is in DocumentationService
+        raise NotImplementedError("Use DocumentationService.search_documentation() for real GitHub documentation")
 
-        with self.ix.searcher() as searcher:
-            # Parse query - search in content and title
-            parser = QueryParser("content", self.ix.schema)
-            parsed_query = parser.parse(query)
-
-            # Execute search
-            search_results = searcher.search(parsed_query, limit=limit)
-
-            for hit in search_results:
-                result = {
-                    "title": hit.get("title", ""),
-                    "content": hit.get("content", "")[:200] + "...",  # Preview
-                    "section": hit.get("section", ""),
-                    "subsection": hit.get("subsection", ""),
-                    "path": hit.get("path", ""),
-                    "score": hit.score,
-                }
-                results.append(result)
-
-        # If no results from index, return placeholder results
-        if not results:
-            results = self._get_placeholder_results(query)
-
-        return results
-
-    def _get_placeholder_results(self, query: str) -> List[Dict[str, Any]]:
+    def _get_placeholder_results(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
         """Get placeholder search results."""
         query_lower = query.lower()
         results = []
@@ -195,4 +174,4 @@ class SearchService:
                 }
             )
 
-        return results[:5]  # Limit to requested number
+        return results[:limit]  # Limit to requested number

@@ -1,12 +1,12 @@
 """
-Documentation service for fetching and parsing CrewAI documentation.
+Documentation service for fetching and parsing CrewAI documentation from GitHub.
 """
 
 import os
+import re
 import json
-import aiohttp
+import httpx
 from typing import Dict, List, Optional, Any
-from bs4 import BeautifulSoup
 from pathlib import Path
 
 from services.cache_service import CacheService
@@ -14,67 +14,39 @@ from services.cache_service import CacheService
 
 class DocumentationService:
     """
-    Service for fetching, parsing, and caching CrewAI documentation.
+    Service for fetching, parsing, and caching CrewAI documentation from GitHub.
     """
     
-    # CrewAI documentation structure
-    SECTIONS = {
-        "introduction": {
-            "url": "https://docs.crewai.com/introduction",
-            "subsections": ["overview", "installation", "quickstart"]
-        },
-        "agents": {
-            "url": "https://docs.crewai.com/core-concepts/agents",
-            "subsections": ["creating-agents", "agent-attributes", "agent-tools"]
-        },
-        "tasks": {
-            "url": "https://docs.crewai.com/core-concepts/tasks",
-            "subsections": ["task-attributes", "task-output", "conditional-tasks"]
-        },
-        "tools": {
-            "url": "https://docs.crewai.com/core-concepts/tools",
-            "subsections": ["using-crewai-tools", "using-langchain-tools", "custom-tools"]
-        },
-        "crews": {
-            "url": "https://docs.crewai.com/core-concepts/crews",
-            "subsections": ["crew-attributes", "crew-output", "hierarchical-process"]
-        },
-        "flows": {
-            "url": "https://docs.crewai.com/core-concepts/flows",
-            "subsections": ["flow-basics", "flow-state", "conditional-flows"]
-        },
-        "memory": {
-            "url": "https://docs.crewai.com/core-concepts/memory",
-            "subsections": ["short-term-memory", "long-term-memory", "entity-memory"]
-        },
-        "examples": {
-            "url": "https://docs.crewai.com/examples",
-            "subsections": ["basic-examples", "advanced-examples", "real-world-applications"]
-        }
-    }
+    # GitHub base URL for raw content
+    GITHUB_BASE = "https://raw.githubusercontent.com/crewAIInc/crewAI/main/docs/en"
     
-    # API reference classes
-    API_CLASSES = {
-        "Agent": {
-            "methods": ["execute", "set_tools", "get_context"],
-            "attributes": ["role", "goal", "backstory", "tools", "llm"]
-        },
-        "Task": {
-            "methods": ["execute", "get_output"],
-            "attributes": ["description", "expected_output", "agent", "tools"]
-        },
-        "Crew": {
-            "methods": ["kickoff", "train", "replay"],
-            "attributes": ["agents", "tasks", "process", "memory"]
-        },
-        "Flow": {
-            "methods": ["start", "add_step", "run"],
-            "attributes": ["state", "steps", "conditions"]
-        },
-        "Tool": {
-            "methods": ["run", "validate_input"],
-            "attributes": ["name", "description", "func"]
-        }
+    # Complete documentation structure from CrewAI GitHub
+    DOCUMENTATION_MAP = {
+        # Core concepts
+        "agents": "/concepts/agents.mdx",
+        "tasks": "/concepts/tasks.mdx",
+        "crews": "/concepts/crews.mdx",
+        "flows": "/concepts/flows.mdx",
+        "tools": "/concepts/tools.mdx",
+        "memory": "/concepts/memory.mdx",
+        "knowledge": "/concepts/knowledge.mdx",
+        "llms": "/concepts/llms.mdx",
+        "cli": "/concepts/cli.mdx",
+        "testing": "/concepts/testing.mdx",
+        "training": "/concepts/training.mdx",
+        "environments": "/concepts/environments.mdx",
+        
+        # Getting started
+        "introduction": "/introduction.mdx",
+        "quickstart": "/quickstart.mdx",
+        "installation": "/installation.mdx",
+        
+        # Guides
+        "create-new-tool": "/guides/create-new-tool.mdx",
+        "llm-connections": "/guides/llm-connections.mdx",
+        "browserbasecloud": "/guides/browserbasecloud.mdx",
+        "agentops": "/guides/agentops.mdx",
+        "langtrace": "/guides/langtrace.mdx"
     }
     
     def __init__(self, cache_service: CacheService):
@@ -85,43 +57,109 @@ class DocumentationService:
             cache_service: Cache service instance
         """
         self.cache = cache_service
-        self.session = None
+        self.client = None
         self.docs_cache_dir = Path("docs_cache/crewai")
         self.docs_cache_dir.mkdir(parents=True, exist_ok=True)
         
-    async def _ensure_session(self):
-        """Ensure aiohttp session is created."""
-        if self.session is None:
-            self.session = aiohttp.ClientSession()
+    async def _ensure_client(self):
+        """Ensure httpx client is created."""
+        if self.client is None:
+            self.client = httpx.AsyncClient()
             
-    async def _fetch_url(self, url: str) -> str:
+    async def _fetch_from_github(self, path: str) -> str:
         """
-        Fetch content from URL.
+        Fetch documentation content from GitHub.
         
         Args:
-            url: URL to fetch
+            path: Path to the MDX file
             
         Returns:
-            HTML content
+            Raw MDX content
         """
-        await self._ensure_session()
+        await self._ensure_client()
         
         # Check cache first
-        cached = self.cache.get(f"url:{url}")
+        cache_key = f"github:{path}"
+        cached = self.cache.get(cache_key)
         if cached:
             return cached
             
+        url = f"{self.GITHUB_BASE}{path}"
+        
         try:
-            async with self.session.get(url) as response:
-                content = await response.text()
-                self.cache.set(f"url:{url}", content)
+            response = await self.client.get(url)
+            if response.status_code == 200:
+                content = response.text
+                self.cache.set(cache_key, content)
+                
+                # Also save to local file cache
+                local_file = self.docs_cache_dir / path.lstrip('/').replace('/', '_')
+                local_file.write_text(content)
+                
                 return content
+            else:
+                raise Exception(f"GitHub returned {response.status_code} for {path}")
+                    
         except Exception as e:
-            # Try local cache if available
-            local_file = self.docs_cache_dir / f"{url.replace('/', '_')}.html"
+            # Try local cache if GitHub fails
+            local_file = self.docs_cache_dir / path.lstrip('/').replace('/', '_')
             if local_file.exists():
                 return local_file.read_text()
-            raise Exception(f"Failed to fetch {url}: {str(e)}")
+            raise Exception(f"Failed to fetch {path}: {str(e)}")
+            
+    def _parse_mdx_content(self, content: str) -> Dict[str, Any]:
+        """
+        Parse MDX content to extract structured documentation.
+        
+        Args:
+            content: Raw MDX content
+            
+        Returns:
+            Parsed documentation structure
+        """
+        result = {
+            "frontmatter": {},
+            "title": "",
+            "description": "",
+            "sections": [],
+            "code_examples": [],
+            "content": content
+        }
+        
+        # Extract frontmatter
+        frontmatter_match = re.match(r'^---\n(.*?)\n---\n', content, re.DOTALL)
+        if frontmatter_match:
+            frontmatter_text = frontmatter_match.group(1)
+            # Simple frontmatter parsing
+            for line in frontmatter_text.split('\n'):
+                if ':' in line:
+                    key, value = line.split(':', 1)
+                    result["frontmatter"][key.strip()] = value.strip().strip('"')
+            
+            # Remove frontmatter from content
+            content = content[frontmatter_match.end():]
+            
+            # Extract title and description from frontmatter
+            result["title"] = result["frontmatter"].get("title", "")
+            result["description"] = result["frontmatter"].get("description", "")
+        
+        # Extract code blocks
+        code_blocks = re.findall(r'```(\w+)?\n(.*?)\n```', content, re.DOTALL)
+        for lang, code in code_blocks:
+            result["code_examples"].append({
+                "language": lang or "python",
+                "code": code.strip()
+            })
+        
+        # Extract section headers
+        sections = re.findall(r'^(#{1,6})\s+(.+)$', content, re.MULTILINE)
+        for level, title in sections:
+            result["sections"].append({
+                "level": len(level),
+                "title": title.strip()
+            })
+        
+        return result
             
     async def get_section(self, section: str, subsection: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -134,83 +172,118 @@ class DocumentationService:
         Returns:
             Parsed documentation content
         """
-        cache_key = f"section:{section}:{subsection or 'main'}"
-        cached = self.cache.get(cache_key)
-        if cached:
-            return cached
+        if section not in self.DOCUMENTATION_MAP:
+            # Try to find a partial match
+            for key in self.DOCUMENTATION_MAP:
+                if section.lower() in key.lower():
+                    section = key
+                    break
+            else:
+                raise ValueError(f"Unknown section: {section}. Available sections: {list(self.DOCUMENTATION_MAP.keys())}")
             
-        if section not in self.SECTIONS:
-            raise ValueError(f"Unknown section: {section}")
-            
-        section_info = self.SECTIONS[section]
-        url = section_info["url"]
+        path = self.DOCUMENTATION_MAP[section]
+        content = await self._fetch_from_github(path)
+        parsed = self._parse_mdx_content(content)
         
-        if subsection:
-            # Construct subsection URL (this is a simplified approach)
-            url = f"{url}/{subsection}"
-            
-        # For now, return structured placeholder data
-        # In production, this would fetch and parse actual documentation
-        content = {
-            "title": f"{section.title()}{f' - {subsection.title()}' if subsection else ''}",
-            "description": f"Documentation for {section}{f' ({subsection})' if subsection else ''}",
-            "url": url,
-            "content": self._get_placeholder_content(section, subsection),
-            "subsections": section_info.get("subsections", []) if not subsection else []
-        }
+        # Add section info
+        parsed["section"] = section
+        parsed["path"] = path
+        parsed["url"] = f"https://docs.crewai.com/en/{path.lstrip('/')}"
         
-        self.cache.set(cache_key, content)
-        return content
+        return parsed
         
     async def get_examples(self, feature: str, example_type: str = "basic") -> List[Dict[str, Any]]:
         """
-        Get code examples for a feature.
+        Get code examples for a feature from the documentation.
         
         Args:
-            feature: Feature name
-            example_type: Type of examples
+            feature: Feature name (e.g., "agent", "task", "flow")
+            example_type: Type of examples (basic/advanced/integration)
             
         Returns:
-            List of examples
+            List of code examples
         """
-        cache_key = f"examples:{feature}:{example_type}"
-        cached = self.cache.get(cache_key)
-        if cached:
-            return cached
-            
-        # Return placeholder examples
-        examples = self._get_placeholder_examples(feature, example_type)
-        self.cache.set(cache_key, examples)
+        # Map feature to section
+        feature_map = {
+            "agent": "agents",
+            "task": "tasks",
+            "crew": "crews",
+            "flow": "flows",
+            "tool": "tools",
+            "memory": "memory"
+        }
+        
+        section = feature_map.get(feature, feature)
+        doc = await self.get_section(section)
+        
+        # Extract relevant code examples
+        examples = []
+        for code_block in doc.get("code_examples", []):
+            if code_block.get("language") in ["python", "py"]:
+                examples.append({
+                    "title": f"{feature.title()} Example",
+                    "description": f"Example of {feature} implementation",
+                    "code": code_block["code"],
+                    "language": "python"
+                })
+        
         return examples
         
     async def get_api_reference(self, class_name: str, method: Optional[str] = None) -> Dict[str, Any]:
         """
-        Get API reference documentation.
+        Get API reference documentation for a class.
         
         Args:
-            class_name: Class name
-            method: Optional method name
+            class_name: Name of the CrewAI class
+            method: Optional specific method
             
         Returns:
             API documentation
         """
-        cache_key = f"api:{class_name}:{method or 'class'}"
-        cached = self.cache.get(cache_key)
-        if cached:
-            return cached
-            
-        if class_name not in self.API_CLASSES:
-            raise ValueError(f"Unknown class: {class_name}")
-            
-        class_info = self.API_CLASSES[class_name]
+        # Map class names to sections
+        class_map = {
+            "Agent": "agents",
+            "Task": "tasks",
+            "Crew": "crews",
+            "Flow": "flows",
+            "Tool": "tools"
+        }
         
-        if method and method not in class_info["methods"]:
-            raise ValueError(f"Unknown method: {class_name}.{method}")
-            
-        # Return structured API documentation
-        api_doc = self._get_placeholder_api_doc(class_name, method, class_info)
-        self.cache.set(cache_key, api_doc)
-        return api_doc
+        section = class_map.get(class_name, class_name.lower())
+        doc = await self.get_section(section)
+        
+        # Extract API information from the documentation
+        api_info = {
+            "class": class_name,
+            "description": doc.get("description", ""),
+            "section": section,
+            "methods": [],
+            "attributes": [],
+            "examples": doc.get("code_examples", [])
+        }
+        
+        # Parse content for method signatures and attributes
+        content = doc.get("content", "")
+        
+        # Look for method definitions (simplified parsing)
+        method_patterns = [
+            r'`\.(\w+)\((.*?)\)`',  # `.method(args)`
+            r'`(\w+)\((.*?)\)`',     # `method(args)`
+            r'- `(\w+)\((.*?)\)`',   # - `method(args)`
+        ]
+        
+        for pattern in method_patterns:
+            matches = re.findall(pattern, content)
+            for match in matches:
+                method_name = match[0]
+                if method and method != method_name:
+                    continue
+                api_info["methods"].append({
+                    "name": method_name,
+                    "signature": f"{method_name}({match[1]})"
+                })
+        
+        return api_info
         
     async def list_sections(self) -> List[Dict[str, Any]]:
         """
@@ -220,193 +293,83 @@ class DocumentationService:
             List of sections with metadata
         """
         sections = []
-        for name, info in self.SECTIONS.items():
-            sections.append({
-                "name": name,
-                "title": name.replace("_", " ").title(),
-                "url": info["url"],
-                "subsections": info.get("subsections", [])
-            })
+        
+        # Group sections by category
+        categories = {
+            "Getting Started": ["introduction", "quickstart", "installation"],
+            "Core Concepts": ["agents", "tasks", "crews", "flows", "tools", "memory", "knowledge", "llms"],
+            "Advanced": ["testing", "training", "environments", "cli"],
+            "Guides": ["create-new-tool", "llm-connections", "browserbasecloud", "agentops", "langtrace"]
+        }
+        
+        for category, section_list in categories.items():
+            for section_name in section_list:
+                if section_name in self.DOCUMENTATION_MAP:
+                    sections.append({
+                        "name": section_name,
+                        "category": category,
+                        "title": section_name.replace("-", " ").title(),
+                        "path": self.DOCUMENTATION_MAP[section_name],
+                        "url": f"https://docs.crewai.com/en{self.DOCUMENTATION_MAP[section_name].rstrip('.mdx')}"
+                    })
+        
         return sections
         
-    def _get_placeholder_content(self, section: str, subsection: Optional[str]) -> str:
-        """Get placeholder content for a section."""
-        if section == "agents":
-            if subsection == "creating-agents":
-                return """
-# Creating Agents
-
-Agents are the building blocks of CrewAI. Each agent has a specific role, goal, and backstory.
-
-## Basic Agent Creation
-
-```python
-from crewai import Agent
-
-researcher = Agent(
-    role='Senior Research Analyst',
-    goal='Uncover cutting-edge developments in AI',
-    backstory='You are an expert analyst with deep knowledge of AI trends',
-    verbose=True,
-    allow_delegation=False
-)
-```
-
-## Agent Attributes
-
-- **role**: Defines the agent's function within the crew
-- **goal**: The objective the agent aims to achieve
-- **backstory**: Provides context to guide the agent's behavior
-- **tools**: List of tools available to the agent
-- **verbose**: Enable detailed logging
-- **allow_delegation**: Whether the agent can delegate tasks
-"""
-            elif subsection == "agent-tools":
-                return """
-# Agent Tools
-
-Agents can use various tools to accomplish their tasks.
-
-## Assigning Tools
-
-```python
-from crewai_tools import SerperDevTool, WebsiteSearchTool
-
-search_tool = SerperDevTool()
-web_tool = WebsiteSearchTool()
-
-agent = Agent(
-    role='Research Analyst',
-    goal='Find accurate information',
-    tools=[search_tool, web_tool]
-)
-```
-"""
-        elif section == "tasks":
-            return """
-# Tasks in CrewAI
-
-Tasks define the specific work that agents need to accomplish.
-
-## Task Definition
-
-```python
-from crewai import Task
-
-research_task = Task(
-    description='Research the latest AI trends in 2024',
-    expected_output='A comprehensive report on AI trends',
-    agent=researcher
-)
-```
-"""
-        elif section == "crews":
-            return """
-# Crews
-
-Crews orchestrate multiple agents working together.
-
-## Creating a Crew
-
-```python
-from crewai import Crew, Process
-
-crew = Crew(
-    agents=[researcher, writer],
-    tasks=[research_task, write_task],
-    process=Process.sequential
-)
-
-result = crew.kickoff()
-```
-"""
-        return f"Documentation content for {section}{f' - {subsection}' if subsection else ''}"
+    async def search_documentation(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        Search through all documentation.
         
-    def _get_placeholder_examples(self, feature: str, example_type: str) -> List[Dict[str, Any]]:
-        """Get placeholder examples."""
-        examples = []
-        
-        if feature == "agent" and example_type == "basic":
-            examples.append({
-                "title": "Basic Agent Example",
-                "description": "Creating a simple research agent",
-                "code": """from crewai import Agent
-
-researcher = Agent(
-    role='Senior Researcher',
-    goal='Conduct thorough research on given topics',
-    backstory='You are an experienced researcher with a keen eye for detail',
-    verbose=True
-)""",
-                "language": "python"
-            })
-        elif feature == "crew" and example_type == "basic":
-            examples.append({
-                "title": "Basic Crew Example",
-                "description": "Setting up a simple crew with two agents",
-                "code": """from crewai import Crew, Agent, Task, Process
-
-# Create agents
-researcher = Agent(
-    role='Researcher',
-    goal='Research topics thoroughly'
-)
-
-writer = Agent(
-    role='Writer',
-    goal='Write compelling content'
-)
-
-# Create tasks
-research_task = Task(
-    description='Research AI trends',
-    agent=researcher
-)
-
-write_task = Task(
-    description='Write article about AI trends',
-    agent=writer
-)
-
-# Create crew
-crew = Crew(
-    agents=[researcher, writer],
-    tasks=[research_task, write_task],
-    process=Process.sequential
-)
-
-# Execute
-result = crew.kickoff()""",
-                "language": "python"
-            })
+        Args:
+            query: Search query
+            limit: Maximum results
             
-        return examples
+        Returns:
+            Search results
+        """
+        results = []
+        query_lower = query.lower()
         
-    def _get_placeholder_api_doc(self, class_name: str, method: Optional[str], class_info: Dict) -> Dict[str, Any]:
-        """Get placeholder API documentation."""
-        if method:
-            return {
-                "class": class_name,
-                "method": method,
-                "signature": f"{method}(self, *args, **kwargs)",
-                "description": f"Execute {method} on {class_name}",
-                "parameters": [
-                    {"name": "args", "type": "Any", "description": "Positional arguments"},
-                    {"name": "kwargs", "type": "Any", "description": "Keyword arguments"}
-                ],
-                "returns": {"type": "Any", "description": "Method result"},
-                "example": f"instance.{method}()"
-            }
-        else:
-            return {
-                "class": class_name,
-                "description": f"{class_name} class for CrewAI",
-                "methods": class_info["methods"],
-                "attributes": class_info["attributes"],
-                "example": f"{class_name.lower()} = {class_name}(...)"
-            }
+        # Search through all sections
+        for section_name, path in self.DOCUMENTATION_MAP.items():
+            try:
+                content = await self._fetch_from_github(path)
+                content_lower = content.lower()
+                
+                # Simple relevance scoring
+                score = 0
+                if query_lower in section_name:
+                    score += 10
+                if query_lower in content_lower:
+                    score += content_lower.count(query_lower)
+                
+                if score > 0:
+                    parsed = self._parse_mdx_content(content)
+                    
+                    # Find context around the query
+                    context_start = max(0, content_lower.find(query_lower) - 100)
+                    context_end = min(len(content), context_start + 200 + len(query))
+                    context = content[context_start:context_end].strip()
+                    if context_start > 0:
+                        context = "..." + context
+                    if context_end < len(content):
+                        context = context + "..."
+                    
+                    results.append({
+                        "section": section_name,
+                        "title": parsed.get("title", section_name.title()),
+                        "score": score,
+                        "context": context,
+                        "path": path
+                    })
+            except Exception as e:
+                # Skip sections that fail to load
+                continue
+        
+        # Sort by score and return top results
+        results.sort(key=lambda x: x["score"], reverse=True)
+        return results[:limit]
             
     async def close(self):
-        """Close the aiohttp session."""
-        if self.session:
-            await self.session.close()
+        """Close the httpx client."""
+        if self.client:
+            await self.client.aclose()

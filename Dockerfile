@@ -1,24 +1,20 @@
+# Use the official Python lightweight image
 FROM python:3.12-slim
 
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Install the project into /app
+COPY . /app
 WORKDIR /app
 
-# Install UV
-RUN pip install uv
-
-# Copy all project files
-COPY . .
-
-# Install dependencies directly from pyproject.toml
-RUN uv pip install --system --no-cache-dir .
-
-# Create necessary directories
-RUN mkdir -p /app/docs_cache/crewai /app/docs_cache/search_index
-
-# Set environment variables
+# Allow statements and log messages to immediately appear in the logs
 ENV PYTHONUNBUFFERED=1
 
-# Expose port for HTTP transport (Smithery will set PORT env var)
-EXPOSE 8000
+# Install dependencies
+RUN uv sync
 
-# Run the MCP server
-CMD ["python", "main.py"]
+EXPOSE $PORT
+
+# Run the FastMCP server
+CMD ["uv", "run", "main.py"]
